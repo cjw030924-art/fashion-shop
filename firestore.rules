@@ -1,0 +1,71 @@
+rules_version = '2';
+// 모의주식(users) + 메이플 강화(maple) + 카 가챠(cargacha) + 쇼핑몰(shop) 공용 규칙
+// Firebase 콘솔(jh-stock-4cbf6) → Firestore Database → 규칙 탭에 이 내용을 통째로 붙여 넣고 게시하세요.
+service cloud.firestore {
+  match /databases/{db}/documents {
+    // 모의주식
+    match /users/{uid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.nick is string
+        && request.resource.data.nick.size() >= 2 && request.resource.data.nick.size() <= 12
+        && request.resource.data.total is number;
+    }
+    // 메이플 강화: 랭킹은 로그인한 사람 누구나, 쓰기는 자기 문서만
+    match /maple/{uid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.nick is string
+        && request.resource.data.nick.size() >= 2 && request.resource.data.nick.size() <= 12
+        && request.resource.data.power is number;
+    }
+    // 카 가챠: 랭킹은 로그인한 사람 누구나, 쓰기는 자기 문서만
+    match /cargacha/{uid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.nick is string
+        && request.resource.data.nick.size() >= 2 && request.resource.data.nick.size() <= 12
+        && request.resource.data.count is number;
+    }
+    // 쇼핑몰(fashion-shop): 이름·장바구니·좋아요는 본인만 읽고 쓰기 (다른 사람은 못 봄)
+    match /shop/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 20
+        && request.resource.data.cart is list && request.resource.data.cart.size() <= 100
+        && request.resource.data.likes is list && request.resource.data.likes.size() <= 200;
+
+      // 주문 내역: 본인만 보기·만들기, 한 번 만든 주문은 수정·삭제 불가
+      match /orders/{orderId} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow create: if request.auth != null && request.auth.uid == uid
+          && request.resource.data.items is list
+          && request.resource.data.items.size() >= 1 && request.resource.data.items.size() <= 100
+          && request.resource.data.total is number && request.resource.data.total > 0
+          && request.resource.data.status == '배송준비중'
+          && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+    }
+    // 쇼핑몰 리뷰: 누구나 읽기, 로그인한 사람이 자기 이름으로만 쓰기, 수정 불가, 자기 리뷰만 삭제
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['productId', 'uid', 'user', 'rating', 'text', 'option', 'fit', 'helpful', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.productId is int
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1 && request.resource.data.rating <= 5
+        && request.resource.data.text is string
+        && request.resource.data.text.size() >= 10 && request.resource.data.text.size() <= 500
+        && request.resource.data.user is string && request.resource.data.user.size() <= 10
+        && request.resource.data.option is string && request.resource.data.option.size() <= 50
+        && (request.resource.data.fit == null || request.resource.data.fit in ['작아요', '정사이즈', '커요'])
+        && request.resource.data.helpful == 0
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+  }
+}
